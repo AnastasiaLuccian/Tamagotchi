@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 enum Choice { rock, paper, scissors }
-enum Result { win, lose, draw }
+enum GameResult { win, lose, draw }
 
 class RockPaperScissorsGame extends StatefulWidget {
   const RockPaperScissorsGame({super.key});
@@ -11,242 +11,498 @@ class RockPaperScissorsGame extends StatefulWidget {
   State<RockPaperScissorsGame> createState() => _RockPaperScissorsGameState();
 }
 
-class _RockPaperScissorsGameState extends State<RockPaperScissorsGame> {
+class _RockPaperScissorsGameState extends State<RockPaperScissorsGame> with SingleTickerProviderStateMixin {
   Choice? playerChoice;
   Choice? computerChoice;
-  String message = "Выбери свой ход!";
+  GameResult? result;
   int playerScore = 0;
   int computerScore = 0;
+  int round = 1;
   final Random random = Random();
 
-  void _playGame(Choice player) {
-    setState(() {
-      playerChoice = player;
-      computerChoice = Choice.values[random.nextInt(3)];
-      _checkResult();
-    });
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  final Map<Choice, Map<String, dynamic>> choiceData = {
+    Choice.rock: {
+      'icon': Icons.diamond,
+      'color': Color(0xFF4FC3F7),
+      'gradient': [Color(0xFF4FC3F7), Color(0xFF29B6F6)],
+      'name': 'Камень',
+      'emoji': '🪨',
+    },
+    Choice.paper: {
+      'icon': Icons.description,
+      'color': Color(0xFF81C784),
+      'gradient': [Color(0xFF81C784), Color(0xFF66BB6A)],
+      'name': 'Бумага',
+      'emoji': '📄',
+    },
+    Choice.scissors: {
+      'icon': Icons.content_cut,
+      'color': Color(0xFFFF8A65),
+      'gradient': [Color(0xFFFF8A65), Color(0xFFFF7043)],
+      'name': 'Ножницы',
+      'emoji': '✂️',
+    },
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.elasticOut,
+      ),
+    );
+
+    _opacityAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeIn,
+      ),
+    );
   }
 
-  void _checkResult() {
-    if (playerChoice == computerChoice) {
-      message = "Ничья!";
-    } else if ((playerChoice == Choice.rock && computerChoice == Choice.scissors) ||
-        (playerChoice == Choice.paper && computerChoice == Choice.rock) ||
-        (playerChoice == Choice.scissors && computerChoice == Choice.paper)) {
-      message = "Ты победил!";
-      playerScore++;
-    } else {
-      message = "Ты проиграл!";
-      computerScore++;
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _playRound(Choice player) async {
+    if (playerChoice != null) return;
+
+    setState(() {
+      playerChoice = player;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    final computer = Choice.values[random.nextInt(3)];
+    setState(() {
+      computerChoice = computer;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    final GameResult roundResult = _calculateResult(player, computer);
+    setState(() {
+      result = roundResult;
+      if (roundResult == GameResult.win) playerScore++;
+      if (roundResult == GameResult.lose) computerScore++;
+      round++;
+    });
+
+    _animationController.forward(from: 0);
+
+    await Future.delayed(const Duration(seconds: 1));
+
+    if (round <= 5) {
+      setState(() {
+        playerChoice = null;
+        computerChoice = null;
+        result = null;
+      });
     }
+  }
+
+  GameResult _calculateResult(Choice player, Choice computer) {
+    if (player == computer) return GameResult.draw;
+
+    if ((player == Choice.rock && computer == Choice.scissors) ||
+        (player == Choice.paper && computer == Choice.rock) ||
+        (player == Choice.scissors && computer == Choice.paper)) {
+      return GameResult.win;
+    }
+
+    return GameResult.lose;
+  }
+
+  String _getResultText() {
+    if (result == null) return "Выберите ваш ход!";
+    switch (result!) {
+      case GameResult.win:
+        return "Победа! 🎉";
+      case GameResult.lose:
+        return "Поражение 😢";
+      case GameResult.draw:
+        return "Ничья! 🤝";
+    }
+  }
+
+  Color _getResultColor() {
+    if (result == null) return Colors.white;
+    switch (result!) {
+      case GameResult.win:
+        return Colors.green[300]!;
+      case GameResult.lose:
+        return Colors.red[300]!;
+      case GameResult.draw:
+        return Colors.yellow[300]!;
+    }
+  }
+
+  Widget _buildChoiceCard(Choice choice, bool isPlayer) {
+    final data = choiceData[choice]!;
+    final bool isSelected = (isPlayer && playerChoice == choice) || (!isPlayer && computerChoice == choice);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: 100,
+      height: 100,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: data['gradient'] as List<Color>,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: isSelected
+            ? [
+          BoxShadow(
+            color: data['color'].withValues(alpha: 0.8),
+            blurRadius: 20,
+            spreadRadius: 5,
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ]
+            : [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: Colors.white.withValues(alpha: isSelected ? 0.8 : 0.3),
+          width: isSelected ? 3 : 2,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            data['emoji'],
+            style: const TextStyle(fontSize: 32),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            data['name'],
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildChoiceButton(Choice choice) {
+    final data = choiceData[choice]!;
+
     return GestureDetector(
-      onTap: () => _playGame(choice),
+      onTap: playerChoice == null ? () => _playRound(choice) : null,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        width: 80,
+        height: 80,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
+          gradient: LinearGradient(
+            colors: data['gradient'] as List<Color>,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Colors.purple[100]!,
-              blurRadius: 10,
+              color: data['color'].withValues(alpha: 0.5),
+              blurRadius: 15,
               spreadRadius: 2,
             ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
           ],
-          border: Border.all(color: const Color(0xFFE1BEE7), width: 3),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.5),
+            width: 2,
+          ),
         ),
         child: Icon(
-          _getChoiceIcon(choice),
-          size: 40,
-          color: const Color(0xFF7B1FA2),
+          data['icon'] as IconData,
+          color: Colors.white,
+          size: 32,
         ),
       ),
     );
-  }
-
-  Widget _buildChoiceResult(Choice choice, bool isPlayer) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: isPlayer ? const Color(0xFFC8E6C9) : const Color(0xFFFFCDD2),
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
-      ),
-      child: Icon(
-        _getChoiceIcon(choice),
-        size: 30,
-        color: const Color(0xFF5D4037),
-      ),
-    );
-  }
-
-  IconData _getChoiceIcon(Choice choice) {
-    switch (choice) {
-      case Choice.rock:
-        return Icons.lens;
-      case Choice.paper:
-        return Icons.description;
-      case Choice.scissors:
-        return Icons.content_cut;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "✨ Камень, Ножницы, Бумага",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF5D4037),
-          ),
-        ),
-        backgroundColor: const Color(0xFF80DEEA),
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Color(0xFF5D4037)),
-      ),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Color(0xFFF8BBD9),
-              Color(0xFFE1BEE7),
-              Color(0xFFC8E6C9),
+              const Color(0xFF667EEA),
+              const Color(0xFF764BA2),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
         ),
-        child: Center(
+        child: SafeArea(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                margin: const EdgeInsets.all(20),
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.purple[100]!,
-                      blurRadius: 10,
-                      spreadRadius: 2,
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context, playerScore * 10),
+                      icon: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close, color: Colors.white),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        "Раунд $round/5",
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        "$playerScore : $computerScore",
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                child: Text(
-                  message,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF7B1FA2),
-                  ),
-                ),
               ),
 
-              const SizedBox(height: 30),
-
-              if (playerChoice != null) ...[
-                Row(
+              Expanded(
+                child: Column(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     Column(
                       children: [
-                        Text(
-                          "Твой выбор",
+                        const Text(
+                          "ВЫ",
                           style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.purple[800],
+                            fontSize: 24,
                             fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        _buildChoiceResult(playerChoice!, true),
+                        const SizedBox(height: 16),
+                        if (playerChoice != null)
+                          _buildChoiceCard(playerChoice!, true)
+                        else
+                          Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                width: 2,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.person,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ),
                       ],
                     ),
+
+                    AnimatedBuilder(
+                      animation: _animationController,
+                      builder: (context, child) {
+                        return Transform.scale(
+                          scale: _scaleAnimation.value,
+                          child: Opacity(
+                            opacity: _opacityAnimation.value,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                              decoration: BoxDecoration(
+                                color: result == null
+                                    ? Colors.white.withValues(alpha: 0.2)
+                                    : _getResultColor().withValues(alpha: 0.3),
+                                borderRadius: BorderRadius.circular(30),
+                                border: Border.all(
+                                  color: result == null
+                                      ? Colors.white.withValues(alpha: 0.3)
+                                      : _getResultColor(),
+                                  width: 2,
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    result == null ? "VS" : _getResultText(),
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: result == null ? Colors.white : _getResultColor(),
+                                    ),
+                                  ),
+                                  if (result != null)
+                                    Text(
+                                      "${choiceData[playerChoice]!['name']} vs ${choiceData[computerChoice]!['name']}",
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
                     Column(
                       children: [
-                        Text(
-                          "Компьютер",
+                        if (computerChoice != null)
+                          _buildChoiceCard(computerChoice!, false)
+                        else
+                          Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                width: 2,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.computer,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          "КОМПЬЮТЕР",
                           style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.purple[800],
+                            fontSize: 24,
                             fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        _buildChoiceResult(computerChoice!, false),
                       ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 30),
-              ],
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildChoiceButton(Choice.rock),
-                  _buildChoiceButton(Choice.paper),
-                  _buildChoiceButton(Choice.scissors),
-                ],
               ),
 
-              const SizedBox(height: 40),
-
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE1BEE7), width: 2),
-                ),
-                child: Text(
-                  "🏆 Счёт: $playerScore - $computerScore",
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF7B1FA2),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              Container(
-                decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.pink[100]!,
-                      blurRadius: 8,
-                      spreadRadius: 2,
-                    ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildChoiceButton(Choice.rock),
+                    _buildChoiceButton(Choice.paper),
+                    _buildChoiceButton(Choice.scissors),
                   ],
                 ),
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context, playerScore > computerScore);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFCE93D8),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                  ),
-                  child: const Text(
-                    "🎀 Вернуться",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+
+              if (round > 5)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Text(
+                        playerScore > computerScore
+                            ? "🎉 Вы победили!"
+                            : playerScore < computerScore
+                            ? "😢 Вы проиграли"
+                            : "🤝 Ничья!",
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        "Итоговый счёт: $playerScore : $computerScore",
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.white70,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(context, playerScore * 10),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF667EEA),
+                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          elevation: 10,
+                        ),
+                        child: const Text(
+                          "Забрать награду",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
             ],
           ),
         ),
